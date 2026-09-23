@@ -9,6 +9,8 @@ Script Purpose:
 ===============================================================================
 */
 
+DROP TABLE IF EXISTS bronze.crm_cust_info;
+
 CREATE TABLE bronze.crm_cust_info (
     cst_id              INT,
     cst_key             VARCHAR(50),
@@ -18,6 +20,8 @@ CREATE TABLE bronze.crm_cust_info (
     cst_gndr            VARCHAR(50),
     cst_create_date     DATE
 );
+
+DROP TABLE IF EXISTS bronze.crm_prd_info;
 
 CREATE TABLE bronze.crm_prd_info (
     prd_id       INT,
