@@ -1,6 +1,49 @@
 -- Advanced Data Analysis
 
--- 08_cumulative_analysis.sql
+
+-- Change Over Time Analysis
+-- Per day trends of sales
+SELECT order_date, SUM(sales_amount) AS total_sales
+FROM gold.fact_sales t
+GROUP BY order_date
+ORDER BY order_date;
+
+-- Per year sales trends
+SELECT EXTRACT(YEAR FROM order_date) AS order_year, SUM(sales_amount) AS total_sales
+FROM gold.fact_sales t
+WHERE order_date IS NOT NULL
+GROUP BY order_year
+ORDER BY order_year;
+
+-- DATE_TRUNC by year
+SELECT DATE_TRUNC('year', order_date) AS order_year, SUM(sales_amount) AS total_sales
+FROM gold.fact_sales t
+WHERE order_date IS NOT NULL
+GROUP BY order_year
+ORDER BY order_year;
+
+-- DATE_TRUNC by month
+SELECT DATE_TRUNC('month', order_date) AS order_month, SUM(sales_amount) AS total_sales
+FROM gold.fact_sales t
+WHERE order_date IS NOT NULL
+GROUP BY order_month
+ORDER BY order_month;
+
+-- TO_CHAR by month
+SELECT TO_CHAR(order_date, 'YYYY-Mon') AS order_month, SUM(sales_amount) AS total_sales
+FROM gold.fact_sales t
+WHERE order_date IS NOT NULL
+GROUP BY TO_CHAR(order_date, 'YYYY-Mon')
+ORDER BY TO_CHAR(order_date, 'YYYY-Mon');
+
+-- Year, month and day
+SELECT EXTRACT(YEAR FROM order_date) AS order_year,
+       EXTRACT(MONTH FROM order_date) AS order_month,
+       EXTRACT(DAY FROM order_date) AS order_day,
+       SUM(sales_amount) AS total_sales
+FROM gold.fact_sales t
+WHERE order_date IS NOT NULL
+
 -- Cumulative Analysis
 -- Running total sales by month
 SELECT DATE_TRUNC('month', order_date) AS order_date,
@@ -68,7 +111,7 @@ FROM (
 ) t
 ORDER BY order_date;
 
--- 09_performance_analysis.sql
+
 -- Performance Analysis
 WITH yearly_sales AS (
     SELECT EXTRACT(YEAR FROM t.order_date) AS order_year,
@@ -126,7 +169,7 @@ SELECT order_month,
 FROM monthly_sales
 ORDER BY product_name, order_month;
 
--- 10_data_segmentation.sql
+
 -- Data Segmentation
 WITH customers_level AS (
     SELECT dc.customer_key,
@@ -148,7 +191,7 @@ SELECT level, COUNT(*)
 FROM customers_level
 GROUP BY level;
 
--- 11_part_to_whole_analysis.sql
+
 -- Part to Whole Analysis
 WITH category_sales AS (
     SELECT dp.category, SUM(t.sales_amount) AS total_sales
@@ -189,142 +232,3 @@ SELECT category,
        (total_orders / SUM(total_orders) OVER()) * 100 AS percent
 FROM category_counts;
 
--- 12_report_customers.sql
--- Customer Report
-WITH base_query AS (
-    SELECT f.order_number,
-           f.product_key,
-           f.sales_amount,
-           f.order_date,
-           f.quantity,
-           f.customer_key,
-           dc.customer_number,
-           CONCAT(dc.first_name, ' ', dc.last_name) AS customer_name,
-           EXTRACT(YEAR FROM AGE(CURRENT_DATE, dc.birthdate)) AS age
-    FROM gold.fact_sales f
-    LEFT JOIN gold.dim_customers dc
-        ON dc.customer_key = f.customer_key
-    WHERE f.order_date IS NOT NULL
-),
-customer_aggregation AS (
-    SELECT customer_key,
-           customer_number,
-           customer_name,
-           age,
-           COUNT(order_number) AS total_orders,
-           SUM(sales_amount) AS total_sales,
-           SUM(quantity) AS total_quantity,
-           COUNT(product_key) AS total_products,
-           (
-               EXTRACT(YEAR FROM MAX(order_date)) -
-               EXTRACT(YEAR FROM MIN(order_date))
-           ) * 12 +
-           (
-               EXTRACT(MONTH FROM MAX(order_date)) -
-               EXTRACT(MONTH FROM MIN(order_date))
-           ) AS lifespan,
-           MIN(order_date) AS first_order,
-           MAX(order_date) AS last_order
-    FROM base_query
-    GROUP BY customer_key, customer_number, customer_name, age
-)
-SELECT customer_key,
-       customer_number,
-       customer_name,
-       age,
-       CASE
-           WHEN age < 20 THEN 'under 20'
-           WHEN age BETWEEN 20 AND 29 THEN '20-29'
-           WHEN age BETWEEN 30 AND 39 THEN '30 - 39'
-           WHEN age BETWEEN 40 AND 49 THEN '40 - 49'
-           ELSE '50 and above'
-       END AS age_group,
-       CASE
-           WHEN lifespan >= 12 AND total_sales > 5000 THEN 'VIP'
-           WHEN lifespan >= 12 AND total_sales <= 5000 THEN 'regular'
-           ELSE 'new'
-       END AS customer_segment,
-       last_order,
-       (
-           EXTRACT(YEAR FROM CURRENT_DATE) -
-           EXTRACT(YEAR FROM last_order)
-       ) * 12 +
-       (
-           EXTRACT(MONTH FROM CURRENT_DATE) -
-           EXTRACT(MONTH FROM last_order)
-       ) AS recency,
-       total_orders,
-       total_sales,
-       total_quantity,
-       total_products,
-       lifespan,
-       total_sales / NULLIF(total_orders, 0) AS avg_order_value
-FROM customer_aggregation;
-
--- 13_report_products.sql
--- Product Report
-WITH base_query AS (
-    SELECT t.order_number,
-           t.product_key,
-           t.customer_key,
-           t.order_date,
-           t.sales_amount,
-           t.quantity,
-           dp.product_name,
-           dp.category,
-           dp.subcategory,
-           dp.cost
-    FROM gold.fact_sales t
-    LEFT JOIN gold.dim_products dp
-        ON t.product_key = dp.product_key
-    WHERE t.order_date IS NOT NULL
-),
-product_aggregations AS (
-    SELECT product_key,
-           product_name,
-           category,
-           subcategory,
-           cost,
-           (
-               EXTRACT(YEAR FROM MAX(order_date)) -
-               EXTRACT(YEAR FROM MIN(order_date))
-           ) * 12 +
-           (
-               EXTRACT(MONTH FROM MAX(order_date)) -
-               EXTRACT(MONTH FROM MIN(order_date))
-           ) AS lifespan,
-           MAX(order_date) AS last_sale_date,
-           COUNT(DISTINCT order_number) AS total_orders,
-           COUNT(DISTINCT customer_key) AS total_customers,
-           SUM(sales_amount) AS total_sales,
-           SUM(quantity) AS total_quantity,
-           ROUND(AVG(sales_amount / NULLIF(quantity, 0)), 1) AS avg_selling_price
-    FROM base_query
-    GROUP BY product_key, product_name, category, subcategory, cost
-)
-SELECT product_key,
-       product_name,
-       category,
-       subcategory,
-       cost,
-       lifespan,
-       last_sale_date,
-       total_orders,
-       total_customers,
-       total_sales,
-       total_quantity,
-       avg_selling_price,
-       CASE
-           WHEN total_sales > 50000 THEN 'High Performer'
-           WHEN total_sales >= 10000 THEN 'Mid Range'
-           ELSE 'Low Performer'
-       END AS product_segment,
-       CASE
-           WHEN total_orders = 0 THEN 0
-           ELSE total_sales / total_orders
-       END AS avg_order_revenue,
-       CASE
-           WHEN lifespan = 0 THEN 0
-           ELSE total_sales / lifespan
-       END AS avg_monthly_revenue
-FROM product_aggregations;
